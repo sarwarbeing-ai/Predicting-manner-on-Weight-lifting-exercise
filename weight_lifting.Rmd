@@ -1,0 +1,127 @@
+---
+title: "Predicting Weight Lifting Exercise manner"
+author: "Sarwar Alam"
+date: "12/7/2020"
+output:
+  html_document:
+    fig_height: 10
+    fig_width: 15
+---
+
+## Introduction  
+Here we have used the [Weight Lifting Exercise dataset](http://groupware.les.inf.puc-rio.br/har) for our experiment on predicting the manner of  how the exercise was done.Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes
+
+In our result we got a stunning accuracy of 99.34% on the unseen data
+and error rate: 0.71%
+
+
+# loading requred package
+```{r, cache = T,results='hide'}
+library(caret)
+library(randomForest)
+library(rpart)
+library(partykit)
+```
+
+
+## Data Preprocessing  
+
+
+### load the Data
+
+```{r, cache = T}
+dat_train <- read.csv("~/pml-training.csv")
+dat_test <- read.csv("~/pml-testing.csv")
+```
+
+
+### Data Cleaning for the better fitting of ML models
+
+```{r,cache=T}
+table(complete.cases(dat_train))
+```
+Removing columns which are containing NA values entirely beacuse there
+are 19216 rows which contain NA values if we remove all the rows
+then we will have very less data and will not have a good fitted model
+Also there are many columns containing NA values heavily so it's better to
+remove them
+```{r, cache = T}
+dat_train <- dat_train[, colSums(is.na(dat_train))== 0] 
+dat_test <- dat_test[, colSums(is.na(dat_test))==0] 
+```  
+
+
+Getting rid of columns whcich are not much importance like
+"X" ,"raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp"          "new_window","num_window"
+```{r, cache = T}
+dat_train <- dat_train[, !grepl("^X|timestamp|window", names(dat_train))]
+dat_test <- dat_test[, !grepl("^X|timestamp|window", names(dat_test))]
+#keeping only numeric columns
+classe<-dat_train$classe
+dat_train <- dat_train[, sapply(dat_train, is.numeric)]
+dat_train$classe <- classe
+dat_test <- dat_test[, sapply(dat_test, is.numeric)]
+```
+
+
+### creating a hold out data for measuring the performance of the ML models
+
+```{r, cache = T}
+set.seed(125) 
+inTrain <- createDataPartition(dat_train$classe, p=0.72, list=F)
+train_data <- dat_train[inTrain, ]
+hold_data <- dat_train[-inTrain, ]
+```
+
+## Fitting model
+
+
+```{r, cache = T}
+cvCtrl <- trainControl(method ="cv",5)
+
+c5Tune <- train(classe~.,data=train_data,method = "rf",ntree=200,
+trControl = cvCtrl)
+```
+
+
+
+performance of the model on the unseen data  
+```{r, cache = T}
+pred <- predict(c5Tune, hold_data)
+confusionMatrix(factor(hold_data$classe), pred)
+```
+
+The overall accuracy of the model
+```{r, cache = T}
+accuracy<-confusionMatrix(factor(hold_data$classe), pred)$overall[[1]]*100
+paste(as.character(round(accuracy,2)),'%',sep="")
+```
+
+
+## Predicting on the test data provided for the project 
+
+```{r, cache = T}
+# there is no use of problem_id so get rid of that column
+
+test_output<-predict(c5Tune,dat_test[,-length(dat_test)])
+test_output
+
+```  
+
+## Some figures on the founding of the results
+
+Figure pertaining to the cross validation accuracy on randomly selected predictors
+```{r}
+plot(c5Tune)
+```
+
+
+We can convert the rpart
+object to a new class called party and plot it to see more in the terminal
+nodes
+```{r, cache = T}
+tree <- rpart(classe ~ ., data = train_data,control = rpart.control(maxdepth = 4))
+plot(as.party(tree))
+```
